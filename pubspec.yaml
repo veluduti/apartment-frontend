@@ -1,0 +1,36 @@
+name: apartment_ecosystem
+description: Apartment Ecosystem Application
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  http: ^1.6.0
+  intl: ^0.20.2
+  provider: ^6.1.5+1
+
+  firebase_core: ^2.27.0
+  firebase_messaging: ^14.7.10
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.15.9
+  shared_preferences: ^2.5.4
+  socket_io_client: ^3.0.2
+  url_launcher: ^6.2.5
+  razorpay_flutter: ^1.4.1
+  image_picker: ^1.0.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true

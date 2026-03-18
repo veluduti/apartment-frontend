@@ -1,0 +1,8 @@
+/build/
+.dart_tool/
+/.packages
+.pub/
+/pubspec.lock
+ios/Flutter/ephemeral/
+android/.gradle/
+android/app/build/
