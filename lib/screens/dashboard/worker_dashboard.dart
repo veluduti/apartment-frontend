@@ -40,7 +40,7 @@ void initState() {
 
     // ================= SOCKET SETUP =================
 socket = IO.io(
-  "http://192.168.1.180:5000", // 🔥 your backend IP
+  "http://192.168.1.6:5000", // 🔥 your backend IP
   IO.OptionBuilder()
       .setTransports(['websocket'])
       .disableAutoConnect()

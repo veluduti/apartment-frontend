@@ -25,6 +25,15 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLoginLoading = false;
   bool isSignupLoading = false;
 
+  List apartments = [];
+  String? selectedApartmentId;
+
+  @override
+  void initState() {
+    super.initState();
+    loadApartments();
+  }
+
   bool _validatePhone() {
     final phone = phoneController.text.trim();
 
@@ -45,16 +54,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!_validatePhone()) return;
 
+    if (selectedApartmentId == null) {
+      _showSnack("Please select apartment");
+      return;
+    }
+
     setState(() => isLoginLoading = true);
 
     try {
+      final phone = phoneController.text.trim();
+      final apartmentId = selectedApartmentId!;
 
       final response = await http.post(
         Uri.parse("${AppConfig.baseUrl}/api/users/login"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "phone": phoneController.text.trim(),
-          "apartmentId": AppConfig.apartmentId,
+          "phone": phone,
+          "apartmentId": apartmentId,
         }),
       );
 
@@ -71,7 +87,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final role = user["role"];
       final name = user["name"];
       final userId = user["id"];
-      final apartmentId = user["apartmentId"];
       final flatNumber = user["flatNumber"];
       final flatId = user["flatId"];
 
@@ -81,38 +96,32 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString("userName", name);
 
       SessionManager.setSession(
-  id: userId,
-  apartmentId: apartmentId,
-  userName: name,
-  userRole: role.toLowerCase(),
-  userPhone: phoneController.text.trim(),
-  flatNumber: flatNumber ?? "",
-  flatId: flatId ?? "",
-  workerService: user["workerProfile"]?["service"], // 🔥 ADD THIS
-);
+        id: userId,
+        apartmentId: apartmentId,
+        userName: name,
+        userRole: role.toLowerCase(),
+        userPhone: phone,
+        flatNumber: flatNumber ?? "",
+        flatId: flatId ?? "",
+        workerService: user["workerProfile"]?["service"],
+      );
 
       setState(() => isLoginLoading = false);
 
       if (role == "RESIDENT") {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => const ResidentDashboard(),
-          ),
+          MaterialPageRoute(builder: (_) => const ResidentDashboard()),
         );
       } else if (role == "WORKER") {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => const WorkerDashboard(),
-          ),
+          MaterialPageRoute(builder: (_) => const WorkerDashboard()),
         );
       } else if (role == "ADMIN") {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => const AdminDashboard(),
-          ),
+          MaterialPageRoute(builder: (_) => const AdminDashboard()),
         );
       }
 
@@ -122,19 +131,46 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> loadApartments() async {
+    try {
+      final response = await http.get(
+        Uri.parse("${AppConfig.baseUrl}/api/apartments/list"),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"]) {
+        setState(() {
+          apartments = data["data"] ?? [];
+
+        // 🔥 RESET selection when new data loads
+        selectedApartmentId = null;
+      });
+      }
+    } catch (e) {
+      _showSnack("Failed to load apartments");
+    }
+  }
+
   Future<void> goToSignup() async {
 
     if (!_validatePhone()) return;
 
+    if (selectedApartmentId == null) {
+      _showSnack("Please select apartment");
+      return;
+    }
+
     setState(() => isSignupLoading = true);
 
     try {
+      final apartmentId = selectedApartmentId!;
 
       final response = await http.get(
         Uri.parse(
           "${AppConfig.baseUrl}/api/users/check-user"
           "?phone=${Uri.encodeComponent(phoneController.text.trim())}"
-          "&apartmentId=${AppConfig.apartmentId}",
+          "&apartmentId=$apartmentId",
         ),
       );
 
@@ -166,6 +202,12 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showSnack(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  void dispose() {
+    phoneController.dispose();
+    super.dispose();
   }
 
   @override
@@ -223,6 +265,47 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
 
+                      /// 🔥 DROPDOWN
+                     DropdownButtonFormField<String>(
+                      isExpanded: true,
+
+                      value: apartments.any((apt) =>
+                              apt["id"].toString() == selectedApartmentId)
+                          ? selectedApartmentId
+                          : null,
+
+                      hint: const Text("Select Apartment"),
+
+                      items: apartments.map<DropdownMenuItem<String>>((apt) {
+                        final id = apt["id"].toString(); // ✅ FIXED
+
+                        return DropdownMenuItem<String>(
+                          value: id,
+                          child: Text(
+                            "${apt["name"]} (${apt["code"]})", // ✅ FIXED
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+
+                      onChanged: (String? value) {
+                        print("Selected Apartment ID: $value"); // debug
+
+                        setState(() {
+                          selectedApartmentId = value;
+                        });
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: "Select Apartment",
+                        prefixIcon: const Icon(Icons.apartment),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                      const SizedBox(height: 15),
+
                       TextFormField(
                         controller: phoneController,
                         keyboardType: TextInputType.number,
@@ -253,40 +336,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF4F46E5),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(12),
-                            ),
-                          ),
                           onPressed: isLoginLoading
                               ? null
                               : () {
-                                  if (_formKey.currentState!
-                                      .validate()) {
+                                  if (_formKey.currentState!.validate()) {
                                     login();
                                   }
                                 },
                           child: isLoginLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child:
-                                      CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  "Login",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                  ),
-                                ),
+                              ? const CircularProgressIndicator()
+                              : const Text("Login"),
                         ),
                       ),
 
@@ -296,26 +355,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: isSignupLoading
                             ? null
                             : () {
-                                if (_formKey.currentState!
-                                    .validate()) {
+                                if (_formKey.currentState!.validate()) {
                                   goToSignup();
                                 }
                               },
                         child: isSignupLoading
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text(
-                                "New user? Create Account",
-                                style: TextStyle(
-                                    fontWeight:
-                                        FontWeight.w500),
-                              ),
+                            ? const CircularProgressIndicator()
+                            : const Text("New user? Create Account"),
                       ),
                     ],
                   ),

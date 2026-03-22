@@ -6,7 +6,7 @@ import '../config/app_config.dart';
 class ApiService {
 
   // 🔥 Make sure this IP matches your PC Ip
-  static const String baseUrl = "http://192.168.1.180:5000/api";
+  static const String baseUrl = "http://192.168.1.6:5000/api";
   
   static Future<Map<String, dynamic>> getWorkersByService(String service) async {
   final response = await http.get(
@@ -43,7 +43,7 @@ static Future<String> uploadPlumbingImage(File file) async {
 
   var request = http.MultipartRequest(
     "POST",
-    Uri.parse("http://192.168.1.180:5000/upload/plumbing"),
+    Uri.parse("http://192.168.1.6:5000/upload/plumbing"),
   );
 
   request.files.add(

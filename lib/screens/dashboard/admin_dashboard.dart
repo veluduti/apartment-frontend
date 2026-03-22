@@ -17,6 +17,10 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard>
     with SingleTickerProviderStateMixin {
 
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+    .showSnackBar(SnackBar(content: Text(message)));
+  }
   late TabController _tabController;
 
   List pendingUsers = [];
@@ -25,6 +29,8 @@ class _AdminDashboardState extends State<AdminDashboard>
   bool isLoading = true;
   String selectedFilter = "ALL";
   String searchQuery = "";
+  bool isHistoryLoading = true;
+  String? loadingUserId;
 
   @override
   void initState() {
@@ -43,6 +49,12 @@ class _AdminDashboardState extends State<AdminDashboard>
     fetchHistory();
   }
 
+  @override
+  void dispose() {
+  _tabController.dispose();
+  super.dispose();
+}
+
   String formatDate(String? date) {
     if (date == null) return "";
     final parsed = DateTime.parse(date).toLocal();
@@ -55,48 +67,103 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   Future<void> fetchPendingUsers() async {
+
     final token = await _getToken();
+
+    if (token == null) {
+      _showSnack("Session expired. Please login again.");
+      logout();
+      return;
+    }
 
     final response = await http.get(
       Uri.parse("${AppConfig.baseUrl}/api/admin/pending-users"),
-      headers: {"Authorization": "Bearer $token"},
+      headers: {
+        "Authorization": "Bearer $token",
+        },
     );
+
+    if (response.statusCode != 200) {
+       setState(() => isLoading = false); 
+      _showSnack("Failed to load data");
+      return;
+    }
 
     final data = jsonDecode(response.body);
 
     setState(() {
-      pendingUsers = data["users"] ?? [];
+      pendingUsers = List<Map<String, dynamic>>.from(data["users"] ?? []);
       isLoading = false;
     });
   }
 
   Future<void> fetchHistory() async {
+
     final token = await _getToken();
+
+    if (token == null) {
+      _showSnack("Session expired. Please login again.");
+      logout();
+      return;
+    }
+
+    setState(() {
+      isHistoryLoading = true;
+    });
 
     final response = await http.get(
       Uri.parse(
           "${AppConfig.baseUrl}/api/admin/history?role=$selectedFilter"),
-      headers: {"Authorization": "Bearer $token"},
+      headers: {
+        "Authorization": "Bearer $token",
+      },
     );
 
+    if (response.statusCode != 200) {
+       setState(() => isHistoryLoading = false);
+      _showSnack("Failed to load data");
+      return;
+    }
+    
     final data = jsonDecode(response.body);
 
     setState(() {
-      historyUsers = data["users"] ?? [];
+      historyUsers = List<Map<String, dynamic>>.from(data["users"] ?? []);
+      isHistoryLoading = false;
     });
   }
 
   Future<void> approveUser(String id) async {
-    final token = await _getToken();
+  if (loadingUserId != null) return;
+  setState(() => loadingUserId = id);
 
-    await http.put(
-      Uri.parse("${AppConfig.baseUrl}/api/admin/approve/$id"),
-      headers: {"Authorization": "Bearer $token"},
-    );
+  final token = await _getToken();
 
-    fetchPendingUsers();
-    fetchHistory();
+  if (token == null) {
+    setState(() => loadingUserId = null);
+    _showSnack("Session expired");
+    logout();
+    return;
   }
+
+  final response = await http.put(
+    Uri.parse("${AppConfig.baseUrl}/api/admin/approve/$id"),
+    headers: {
+    "Authorization": "Bearer $token",
+    },
+  );
+
+  if (response.statusCode != 200) {
+  _showSnack("Failed to approve user");
+  setState(() => loadingUserId = null);
+  return; // 🔥 IMPORTANT
+}
+
+  setState(() => loadingUserId = null);
+
+  fetchPendingUsers();
+  fetchHistory();
+}
 
   void showRejectDialog(String id) {
     final TextEditingController reasonController =
@@ -133,15 +200,19 @@ class _AdminDashboardState extends State<AdminDashboard>
             onPressed: () async {
 
               if (reasonController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Reason required")),
-                );
+                _showSnack("Reason required");
                 return;
               }
 
               final token = await _getToken();
 
-              await http.put(
+              if (token == null) {
+                _showSnack("Session expired");
+                logout();
+                return;
+              }
+
+              final response = await http.put(
                 Uri.parse("${AppConfig.baseUrl}/api/admin/reject/$id"),
                 headers: {
                   "Authorization": "Bearer $token",
@@ -151,6 +222,10 @@ class _AdminDashboardState extends State<AdminDashboard>
                   "reason": reasonController.text.trim(),
                 }),
               );
+
+              if (response.statusCode != 200) {
+                _showSnack("Failed to reject user");
+              }
 
               Navigator.pop(context);
               fetchPendingUsers();
@@ -188,6 +263,12 @@ class _AdminDashboardState extends State<AdminDashboard>
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+            )
+          ],
         ),
         child: Column(
           children: [
@@ -230,8 +311,16 @@ class _AdminDashboardState extends State<AdminDashboard>
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text("Admin Panel",
-            style: TextStyle(color: Colors.black)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text("Admin Panel", style: TextStyle(color: Colors.black)),
+            Text(
+              "Apartment Dashboard",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.black),
@@ -276,10 +365,12 @@ class _AdminDashboardState extends State<AdminDashboard>
       return const Center(child: Text("No pending users"));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: pendingUsers.length,
-      itemBuilder: (context, index) {
+    return RefreshIndicator(
+      onRefresh: fetchPendingUsers,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: pendingUsers.length,
+        itemBuilder: (context, index) {
 
         final user = pendingUsers[index];
 
@@ -287,33 +378,92 @@ class _AdminDashboardState extends State<AdminDashboard>
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16)),
           margin: const EdgeInsets.only(bottom: 15),
-          child: ListTile(
-            title: Text(user["name"],
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold)),
-            subtitle: Text("${user["phone"]} • ${user["role"]}"),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.check,
-                      color: Colors.green),
-                  onPressed: () => approveUser(user["id"]),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close,
-                      color: Colors.red),
-                  onPressed: () => showRejectDialog(user["id"]),
-                ),
-              ],
+          child: Container(
+  padding: const EdgeInsets.all(16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(user["name"] ?? "",
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
           ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(user["role"] ?? "",
+              style: const TextStyle(color: Colors.orange),
+            ),
+          ),
+        ],
+      ),
+
+      const SizedBox(height: 8),
+
+      Text(user["phone"] ?? "",  style: const TextStyle(color: Colors.grey)),
+
+      const SizedBox(height: 12),
+
+      Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+              ),
+              onPressed: loadingUserId == user["id"]
+              ? null
+              : () => approveUser(user["id"]),
+              child: loadingUserId == user["id"]
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text("Approve"),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              onPressed: loadingUserId == user["id"]
+              ? null
+              : () => showRejectDialog(user["id"]),
+              child: const Text("Reject"),
+            ),
+          ),
+        ],
+      )
+    ],
+  ),
+)
+
         );
       },
+      ),
     );
   }
+  
 
   Widget buildHistoryTab() {
+
+    if (isHistoryLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     final filteredUsers = historyUsers.where((user) {
       final name = user["name"].toString().toLowerCase();
@@ -321,6 +471,7 @@ class _AdminDashboardState extends State<AdminDashboard>
       return name.contains(searchQuery) ||
           phone.contains(searchQuery);
     }).toList();
+    
 
     return Column(
       children: [
@@ -342,12 +493,35 @@ class _AdminDashboardState extends State<AdminDashboard>
           ),
         ),
 
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: ["ALL", "RESIDENT", "WORKER"].map((role) {
+            final isSelected = selectedFilter == role;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              child: ChoiceChip(
+                label: Text(role),
+                selected: isSelected,
+                onSelected: (_) {
+                  setState(() {
+                    selectedFilter = role;
+                  });
+                  fetchHistory(); // 🔥 reload
+                },
+              ),
+            );
+          }).toList(),
+        ),
+
         const SizedBox(height: 10),
 
         Expanded(
           child: filteredUsers.isEmpty
               ? const Center(child: Text("No history found"))
-              : ListView.builder(
+              : RefreshIndicator(
+                onRefresh: fetchHistory,
+                child: ListView.builder(
                   padding: const EdgeInsets.all(20),
                   itemCount: filteredUsers.length,
                   itemBuilder: (context, index) {
@@ -363,7 +537,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                       margin:
                           const EdgeInsets.only(bottom: 15),
                       child: ListTile(
-                        title: Text(user["name"],
+                        title: Text(user["name"] ?? "",
                             style: const TextStyle(
                                 fontWeight:
                                     FontWeight.bold)),
@@ -372,7 +546,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                               CrossAxisAlignment.start,
                           children: [
                             Text(
-                                "${user["phone"]} • ${user["role"]}"),
+                                "${user["phone"] ?? ""} • ${user["role"] ?? ""}"),
                             const SizedBox(height: 6),
                             Container(
                               padding:
@@ -390,7 +564,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                                         20),
                               ),
                               child: Text(
-                                user["status"],
+                                user["status"] ?? "",
                                 style: TextStyle(
                                   color: isApproved
                                       ? Colors.green
@@ -403,7 +577,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                           ],
                         ),
                         trailing: Text(
-                          formatDate(user["actionAt"]),
+                          formatDate(user["actionAt"] != null ? user["actionAt"].toString() : null),
                           style: const TextStyle(
                               fontSize: 12,
                               color: Colors.grey),
@@ -412,6 +586,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                     );
                   },
                 ),
+        ),
         ),
       ],
     );

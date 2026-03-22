@@ -1,7 +1,7 @@
 class ApiConfig {
 
   // 🔥 Change this if your system IP changes
-  static const String baseUrl = "http://192.168.1.180:5000";
+  static const String baseUrl = "http://192.168.1.6:5000";
 
   // ===============================
   // USER APIs
