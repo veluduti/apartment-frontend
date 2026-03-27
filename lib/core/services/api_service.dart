@@ -332,7 +332,35 @@ static Future<Map<String, dynamic>> setWorkerCapacity(
   return null;
 }
 
-  // ================================
+static Future<Map<String, dynamic>> updateItems(
+    Map<String, dynamic> data) async {
+  try {
+    final requestId = data["requestId"];
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/requests/edit-items"),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: jsonEncode({
+        "requestId": requestId,
+        "items": data["items"],
+      }),
+    );
+
+    final decoded = jsonDecode(response.body);
+
+    return decoded;
+
+  } catch (e) {
+    return {
+      "success": false,
+      "message": e.toString(),
+    };
+  }
+}
+
+// ================================
 // SAVE FCM TOKEN
 // ================================
 static Future<Map<String, dynamic>> saveToken(
@@ -352,6 +380,7 @@ static Future<Map<String, dynamic>> saveToken(
     return {"success": false};
   }
 }
+
 
 
   // ===============================

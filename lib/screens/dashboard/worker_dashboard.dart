@@ -91,34 +91,13 @@ socket.on("newRequest", (data) {
   );
 });
 
-    Future.microtask(() =>
-        context.read<RequestRepository>().fetchRequests());
+   Future.microtask(() {
+    final repo = context.read<RequestRepository>();
+    repo.fetchRequests(); 
+  });
 
     getFCMToken();
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.notification != null) {
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            title: Text(message.notification!.title ?? "Notification"),
-            content: Text(message.notification!.body ?? ""),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  context.read<RequestRepository>().fetchRequests();
-                },
-                child: const Text("OK"),
-              ),
-            ],
-          ),
-        );
-      }
-    });
-  }
+}
 
   @override
 void dispose() {
@@ -161,8 +140,8 @@ void dispose() {
 
   @override
   Widget build(BuildContext context) {
-
-    final repo = context.watch<RequestRepository>();
+  final repo = context.watch<RequestRepository>();
+    
     final workerName = SessionManager.userName ?? "Worker";
 
     final pending = repo.allRequests
@@ -384,6 +363,8 @@ void dispose() {
   ),
 ),
 
+// ================= EDIT REQUESTS =================
+
   const SizedBox(height: 30), 
   const SectionTitle("New Requests"),
             const SizedBox(height: 15),
@@ -489,19 +470,30 @@ class WorkerCard extends StatelessWidget {
 
   @override
 Widget build(BuildContext context) {
-  final repo = context.read<RequestRepository>();
 
+  final repo = context.watch<RequestRepository>();
+
+final edit = repo.editRequests
+    .where((e) => e.requestId == request.id)
+    .toList();
+
+final originalItems =
+    request.serviceType == "IRON" ? request.ironItems : [];
+
+final editedItems =
+    edit.isNotEmpty ? edit.first.items : [];
+  
   return Container(
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.04),
-          blurRadius: 10,
-          offset: const Offset(0, 5),
+          color: Colors.black.withOpacity(0.06),
+          blurRadius: 16,
+          offset: const Offset(0, 8),
         ),
       ],
     ),
@@ -537,9 +529,7 @@ Widget build(BuildContext context) {
           ],
         ),
 
-        const SizedBox(height: 6),
-        Divider(height: 1, color: Colors.grey.shade300),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),    
 
         /// DATE
         if (request.pickupDate != null &&
@@ -578,11 +568,10 @@ Widget build(BuildContext context) {
   children: [
     CircleAvatar(
       radius: 18,
-      backgroundColor: Colors.grey.shade200,
-      child: const Icon(
+      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+      child: Icon(
         Icons.person,
-        size: 18,
-        color: Colors.black54,
+        color: Theme.of(context).colorScheme.primary,
       ),
     ),
     const SizedBox(width: 8),
@@ -653,10 +642,149 @@ Widget build(BuildContext context) {
               ),
           ],
         ),
+        
+        const SizedBox(height: 12),
+
+// 🔥🔥 ADD THIS BLOCK HERE
+
+if (edit.isNotEmpty && edit.first.status == "PENDING") ...[
+  const SizedBox(height: 12),
+
+  Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          Colors.orange.shade50,
+          Colors.white,
+        ],
+      ),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        Row(
+          children: const [
+            Icon(Icons.edit, size: 16, color: Colors.orange),
+            SizedBox(width: 6),
+            Text(
+              "Edit Requested",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
+            ),
+          ],
+        ),
 
         const SizedBox(height: 10),
-        Divider(height: 1, color: Colors.grey.shade300),
+
+
+        ...editedItems.map((item) {
+
+          final oldItem = originalItems
+          .where((e) => e.clothType == item["clothType"])
+          .toList();
+
+      final old = oldItem.isNotEmpty ? oldItem.first : null;
+
+      final newQty = int.tryParse(item["quantity"].toString()) ?? 0;
+      final oldQty = old?.quantity ?? 0;
+
+      final isNew = old == null;
+      final isIncreased = old != null && newQty > oldQty;
+
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: isNew
+                  ? Colors.green.withOpacity(0.15)
+                  : isIncreased
+                      ? Colors.blue.withOpacity(0.15)
+                      : null,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(item["clothType"]),
+
+                    if (isNew)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child: Text(
+                          "NEW",
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+
+                    if (isIncreased)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child: Text(
+                          "↑",
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+
+                Text("x${item["quantity"] ?? 0}"),
+              ],
+            ),
+          );
+        }),
+
         const SizedBox(height: 10),
+
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () =>
+                    _handleEdit(context, edit.first.id, false),
+                child: const Text("Reject"),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () =>
+                    _handleEdit(context, edit.first.id, true),
+                child: const Text("Approve"),
+              ),
+            ),
+          ],
+        )
+      ],
+    ),
+  ),
+],
 
 /// PLUMBING DETAILS
 if (request.serviceType == "PLUMBING") ...[
@@ -798,10 +926,8 @@ if (request.serviceType == "PLUMBING") ...[
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
+              color: Colors.grey.shade50,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.grey.shade400,
-              ),
             ),
             child: Column(
               children: [
@@ -843,7 +969,7 @@ if (request.serviceType == "PLUMBING") ...[
                   ),
                 ),
 
-                Divider(height: 1, color: Colors.grey.shade300),
+                const SizedBox(height: 12),
                 const SizedBox(height: 6),
 
                 Row(
@@ -884,10 +1010,8 @@ if (request.serviceType == "PLUMBING") ...[
         ],
 
         /// STATUS + CHAT
-
-const SizedBox(height: 10),
-Divider(height: 1, color: Colors.grey.shade300),
-const SizedBox(height: 10),
+        
+const SizedBox(height: 12),
       Row(
   children: [
 
@@ -1059,13 +1183,13 @@ if (request.status == "CANCELLED" || request.status == "REJECTED") ...[
           Expanded(
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-  backgroundColor: Theme.of(context).colorScheme.primary,
-  foregroundColor: Colors.white,
-  minimumSize: const Size(double.infinity, 48),
-  shape: RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(14),
-  ),
-),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
               onPressed: () async {
 
   final response = await ApiService.updateStatus(
@@ -1428,6 +1552,102 @@ if (request.status == "CANCELLED" || request.status == "REJECTED") ...[
 }
 }
 
+class EditRequestCard extends StatelessWidget {
+  final dynamic edit;
+
+  const EditRequestCard({super.key, required this.edit});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final items = edit.items ?? [];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.orange.shade50,
+            Colors.white,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Edit Request",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                 "Flat ${edit.request?.flatNumber ?? "N/A"}",
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          ...items.map((item) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(item["clothType"]),
+                Text("x${item["quantity"]}"),
+              ],
+            );
+          }),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+
+              // ❌ REJECT
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    _handleEdit(context, edit.id, false);
+                  },
+                  child: const Text("Reject"),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // ✅ APPROVE
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    _handleEdit(context, edit.id, true);
+                  },
+                  child: const Text("Approve"),
+                ),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+}
+
 ///////////////////////////////////////////////////////////////////
 
 class SectionTitle extends StatelessWidget {
@@ -1439,9 +1659,9 @@ class SectionTitle extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.3,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.5,
       ),
     );
   }
@@ -1469,6 +1689,66 @@ class EmptyState extends StatelessWidget {
 ),
       child: Text(text,
           style: const TextStyle(color: Colors.grey)),
+    );
+  }
+}
+
+Future<void> _handleEdit(
+  BuildContext context,
+  String editId,
+  bool isApprove,
+) async {
+  String? reason;
+
+  if (!isApprove) {
+    final controller = TextEditingController();
+
+    reason = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Reject Reason"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: "Enter reason",
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, controller.text.trim()),
+            child: const Text("Submit"),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null || reason.isEmpty) return;
+  }
+
+  final endpoint = isApprove
+      ? "/requests/edit/approve"
+      : "/requests/edit/reject";
+
+  final response = await ApiService.post(endpoint, {
+    "editId": editId,
+    "userId": SessionManager.userId,
+    "reason": reason, // 🔥 important
+  });
+
+  if (response["success"] == true) {
+    final repo = context.read<RequestRepository>();
+
+    await repo.fetchRequests();
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(response["message"] ?? "Failed"),
+      ),
     );
   }
 }

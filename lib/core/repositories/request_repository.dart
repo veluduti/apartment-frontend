@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../../core/models/pickup_slot_model.dart';
+import '../models/request_edit.dart';
 
 //////////////////////////////////////////////////////////////
 // SERVICE REQUEST MODEL
@@ -251,7 +252,7 @@ class RequestStatusLog {
 }
 
 class RequestRepository extends ChangeNotifier {
-
+  List<RequestEdit> editRequests = [];
   List<ServiceRequest> _allRequests = [];
   List<ServiceRequest> get allRequests => _allRequests;
 
@@ -273,16 +274,25 @@ class RequestRepository extends ChangeNotifier {
         role,
         userId,
       );
-
+      
       if (response["success"] == true) {
 
         final data = response["data"] as List;
 
-        print("FULL RESPONSE DATA:");
-        print(data);
-
         _allRequests =
             data.map((e) => ServiceRequest.fromJson(e)).toList();
+
+        // ===============================
+        // 🔥 ADD THIS BLOCK
+        // ===============================
+        final edits = response["edits"] ?? [];
+
+        editRequests = edits
+            .map<RequestEdit>((e) => RequestEdit.fromJson(e))
+            .toList();
+
+        print("EDIT REQUESTS:");
+        print(editRequests.length);
 
         notifyListeners();
       }
